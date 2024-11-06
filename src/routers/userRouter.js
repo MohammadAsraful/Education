@@ -1,5 +1,5 @@
 const express = require('express');
-const { getUsers, getUser, deleteUser, processRegister, activateUserAccount, updateUserById } = require('../controllers/userController');
+const { getUsers, getUser, deleteUser, processRegister, activateUserAccount, updateUserById, handleManageUserStatusById } = require('../controllers/userController');
 const uploadUserImage = require('../middlewares/uploadFile');
 const { runValidation } = require('../validator');
 const { validateUserRegistration } = require('../validator/auth');
@@ -23,6 +23,8 @@ userRouter.post('/activate',isLoggedOut, activateUserAccount)
 userRouter.get('/:id',isLoggedIn,isAdmin, getUser)
 userRouter.delete('/:id',isLoggedIn, deleteUser)
 userRouter.put('/:id',uploadUserImage.single('image'),isLoggedIn, updateUserById)
+userRouter.put('/manage-user/:id',isLoggedIn, isAdmin, handleManageUserStatusById)
+
 
 
 

@@ -7,7 +7,8 @@ const { deleteImage } = require('../helper/deleteImage');
 const { createJSONWebToken } = require('../helper/jsonwebtoken');
 const { jwtActivationKey, clientUrl, defaultImagePath } = require('../secret');
 const { emailWithNodeMailer } = require('../helper/email');
-const {deleteOldImage } = require ('../helper/deleteImageHelper')
+const {deleteOldImage } = require ('../helper/deleteImageHelper');
+const { handleUserAction } = require('../services/userService');
 
 
 // get all users
@@ -94,7 +95,7 @@ const deleteUser = async (req, res, next)=>{
         const id = req.params.id;
         const options = {password: 0};
         const user = await findUserById(User, id, options)
-
+// find solution tutorial 42 for remove userImagePath
         if (user && user.image) {
             const userImagePath = user.image;
            deleteImage(userImagePath)
@@ -247,6 +248,52 @@ const updateUserById = async (req, res, next)=>{
     }
 }
 
+// const handleBanUserById = async (req, res, next)=>{
+//     try {
+//         const userId = req.params.id;
+        
+//         await findUserById(User, userId)
+//         const updates = { isBanned: true}
+//         const updateOptions = {new: true, runValidators: true, context: 'query'};
+
+
+//         const updatedUser = await User.findByIdAndUpdate(userId,updates, updateOptions).select('-password')
+
+//         if(!updatedUser) {
+//             throw createError(404, 'User does not update successfully')
+//         }
+
+//         return successResponse(res,{
+//             statusCode: 200,
+//             message: 'User has been banned successfully',
+//             payload: { updatedUser}
+        
+//         })
+
+//     } catch (error) {
+        
+//         next(error)
+//     }
+// }
+const handleManageUserStatusById = async (req, res, next)=>{
+    try {
+        const userId = req.params.id;
+        const action = req.body.action;
+       
+        const successMessage = await handleUserAction(userId, action)
+
+        return successResponse(res,{
+            statusCode: 200,
+            message: successMessage,
+            payload: {} 
+        })
+
+    } catch (error) {
+        
+        next(error)
+    }
+}
+
 
 module.exports = {
     getUsers,
@@ -254,5 +301,6 @@ module.exports = {
       deleteUser,
        processRegister,
         activateUserAccount,
-         updateUserById
+         updateUserById,
+          handleManageUserStatusById
         }   

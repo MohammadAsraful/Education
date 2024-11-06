@@ -11,7 +11,7 @@ const handleLogin = async(req, res, next) =>{
     try { // email, password req.body
         const {email, password} = req.body;
           //isExist user
-        const user = await User.findOne({email})
+        const user = await User.findOne({ email })
         if(!user){
             throw createError(404, 'User does not exist with this email, please register first')
         }
@@ -27,7 +27,7 @@ const handleLogin = async(req, res, next) =>{
             throw createError(403, 'Your account has been banned, please contact authority')
         }
 
-
+        
           //token and send to cookie(http cookie)
         // Create JWT
       const accessToken = createJSONWebToken({user}, jwtAccessKey, '15m');
@@ -39,12 +39,13 @@ const handleLogin = async(req, res, next) =>{
             sameSite: 'none',
         }
       );
-      
+      //this line for not show password when user login
+      const userWithoutPassword = await User.findOne({ email }).select('-password')
           // success response
           return successResponse(res,{
             statusCode: 200,
             message: 'User logged in successfully',
-            payload: { user}
+            payload: { userWithoutPassword}
         })
         
     } catch (error) {

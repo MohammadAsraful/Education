@@ -1,14 +1,15 @@
 const createError = require('http-errors')
-const User = require('../models/userModel');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs')
+const User = require('../models/userModel');
 const { successResponse } = require('./responseController');
 const { findUserById } = require('../services/findUserById');
 const { deleteImage } = require('../helper/deleteImage');
 const { createJSONWebToken } = require('../helper/jsonwebtoken');
-const { jwtActivationKey, clientUrl, defaultImagePath } = require('../secret');
+const { jwtActivationKey, clientUrl, defaultImagePath, jwtResetPasswordKey } = require('../secret');
 const { emailWithNodeMailer } = require('../helper/email');
 const {deleteOldImage } = require ('../helper/deleteImageHelper');
-const { handleUserAction } = require('../services/userService');
+const { handleUserAction, findUsers, findSingleUserById, deleteSingleUserById, updateSingleUserById, updateUserPasswordById, forgetPasswordByEmail } = require('../services/userService');
 
 
 // get all users
@@ -19,49 +20,20 @@ const getUsers = async (req, res, next)=>{
         const page = Number(req.query.page )|| 1 ;
         const limit = Number(req.query.limit) || 5 ;
 
-        const searchRegExp = new RegExp('.*' + search + '.*', 'i');
-
-        const filter = {
-            isAdmin: {$ne: true},
-            $or: [
-                {name: {$regex: searchRegExp}},
-                {email: {$regex: searchRegExp}},
-                {phone: {$regex: searchRegExp}},
-                {address: {$regex: searchRegExp}},
-            ]
-        }
         
-        const options = {password: 0};
+        // imported from service>userService
+        const {users,pagination} = await findUsers(search, page, limit)
+       
 
-        const users = await User.find(filter, options)
-        .limit(limit)
-        .skip((page-1) * limit)
+        
 
-        const count = await User.find(filter).countDocuments();
-
-        if(!users) {throw createError(404, 'no users found')}
-
-        // res.status(200).send({
-        //     message:'Users were returned successfully',
-        //     users,
-        //     pagination: {
-        //         totalPages: Math.ceil(count / limit),
-        //         currentPage: page,
-        //         previousPage: page-1 > 0 ? page-1 : null,
-        //         nextPage: page + 1 <= Math.ceil(count/limit) ? page + 1 : null,
-        //     }
-        // })
+        
         return successResponse(res,{
             statusCode: 200,
             message: 'Users were returned successfully',
             payload: {
-                users,
-            pagination: {
-                totalPages: Math.ceil(count / limit),
-                currentPage: page,
-                previousPage: page-1 > 0 ? page-1 : null,
-                nextPage: page + 1 <= Math.ceil(count/limit) ? page + 1 : null,
-                }
+                users: users,
+            pagination: pagination,
             }
         })
 
@@ -73,10 +45,10 @@ const getUsers = async (req, res, next)=>{
 // get single user by id
 const getUser = async (req, res, next)=>{
     try {
-        console.log(req.user)
+       
         const id = req.params.id;
         const options = {password: 0};
-        const user = await findUserById(User, id, options)
+        const user = await findSingleUserById(id, options)
       
         return successResponse(res,{
             statusCode: 200,
@@ -90,20 +62,13 @@ const getUser = async (req, res, next)=>{
         next(error)
     }
 }
+// delete single user by Id
 const deleteUser = async (req, res, next)=>{
     try {
         const id = req.params.id;
         const options = {password: 0};
-        const user = await findUserById(User, id, options)
+        await deleteSingleUserById(id, options)
 // find solution tutorial 42 for remove userImagePath
-        if (user && user.image) {
-            const userImagePath = user.image;
-           deleteImage(userImagePath)
-          }
-
-        await User.findByIdAndDelete({_id: id, 
-            isAdmin: false,
-        })
       
         return successResponse(res,{
             statusCode: 200,
@@ -117,6 +82,7 @@ const deleteUser = async (req, res, next)=>{
         next(error)
     }
 }
+// creaat a user
 const processRegister = async (req, res, next) => { 
     try {
       const { name, email, password, phone, address } = req.body;
@@ -168,7 +134,7 @@ const processRegister = async (req, res, next) => {
     }
   };
   
-
+// active a user by receiving token
 const activateUserAccount = async (req, res, next)=>{
     try {
         const token = req.body.token;
@@ -203,37 +169,12 @@ const activateUserAccount = async (req, res, next)=>{
         next(error)
     }
 }
-
+// update a user byId
 const updateUserById = async (req, res, next)=>{
     try {
         const userId = req.params.id;
-        const options = {password: 0};
-        const user = await findUserById(User, userId, options)
-        const updateOptions = {new: true, runValidators: true, context: 'query'};
-       
-        let updates = {};
-
-        for(let key in req.body){
-            if(['name', 'phone','address','password'].includes(key)){
-                updates[key] = req.body[key];
-            }
-        }
-
-        const image = req.file.path;
-        if (image) {
-            if(image.size > 1024 * 1024 * 2){
-                throw new Error('file is too large, it must be less than 2 mb')
-            }
-            // updates.image = image.buffer.toString('base64')
-            updates.image = image;
-            user.image !== 'default.png' && deleteOldImage(user.image)
-        }
-
-        const updatedUser = await User.findByIdAndUpdate(userId, updates, updateOptions).select('-password')
-
-        if(!updatedUser) {
-            throw createError(404, 'User does not exist with this Id')
-        }
+        
+        const updatedUser = await updateSingleUserById(userId,req)
 
         return successResponse(res,{
             statusCode: 200,
@@ -275,6 +216,8 @@ const updateUserById = async (req, res, next)=>{
 //         next(error)
 //     }
 // }
+
+
 const handleManageUserStatusById = async (req, res, next)=>{
     try {
         const userId = req.params.id;
@@ -293,6 +236,73 @@ const handleManageUserStatusById = async (req, res, next)=>{
         next(error)
     }
 }
+const handleUpdatePassword = async (req, res, next)=>{
+    try {
+        const {email, oldPassword, newPassword, confirmPassword} = req.body;
+        const userId = req.params.id;
+
+        const updateUser = await updateUserPasswordById(userId,email, oldPassword, newPassword, confirmPassword)
+
+        return successResponse(res,{
+            statusCode: 200,
+            message: 'password updated successfully',
+            payload: {updateUser} 
+        })
+
+    } catch (error) {
+        
+        next(error)
+    }
+}
+const handleForgetPassword = async (req, res, next)=>{
+    try {
+        const {email} = req.body;
+      
+        const token =await forgetPasswordByEmail(email)
+    
+        return successResponse(res, {
+          statusCode: 200,
+          message: `Please go to your ${email} for reseting the password`,
+          payload: {token },
+        });
+    } catch (error) {
+        
+        next(error)
+    }
+}
+const handleResetPassword = async (req, res, next)=>{
+    try {
+       
+        const {token, password} = req.body;
+        const decoded = jwt.verify(token, jwtResetPasswordKey)
+        if(!decoded) {
+            throw createError(400, 'Invalid/Expired token')
+        }
+
+        const filter = {email: decoded.email}
+        const updates = {password: password}
+        const updateOptions = {new: true}
+        const updateUser = await User.findOneAndUpdate(
+            filter,
+           updates, 
+           updateOptions, 
+       ).select('-password')
+
+       if(!updateUser){
+           throw createError(400, 'password reset failed')
+       }
+
+        return successResponse(res,{
+            statusCode: 200,
+            message: 'Password reset successfully',
+            payload: { }   
+        })
+
+    } catch (error) {
+        
+        next(error)
+    }
+}
 
 
 module.exports = {
@@ -302,5 +312,8 @@ module.exports = {
        processRegister,
         activateUserAccount,
          updateUserById,
-          handleManageUserStatusById
+          handleManageUserStatusById,
+           handleUpdatePassword,
+            handleForgetPassword,
+             handleResetPassword,
         }   

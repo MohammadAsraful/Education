@@ -9,7 +9,7 @@ const { createJSONWebToken } = require('../helper/jsonwebtoken');
 const { jwtActivationKey, clientUrl, defaultImagePath, jwtResetPasswordKey } = require('../secret');
 const { emailWithNodeMailer } = require('../helper/email');
 const {deleteOldImage } = require ('../helper/deleteImageHelper');
-const { handleUserAction, findUsers, findSingleUserById, deleteSingleUserById, updateSingleUserById, updateUserPasswordById, forgetPasswordByEmail } = require('../services/userService');
+const { handleUserAction, findUsers, findSingleUserById, deleteSingleUserById, updateSingleUserById, updateUserPasswordById, forgetPasswordByEmail, resetPasswordByEmail } = require('../services/userService');
 
 
 // get all users
@@ -274,23 +274,8 @@ const handleResetPassword = async (req, res, next)=>{
     try {
        
         const {token, password} = req.body;
-        const decoded = jwt.verify(token, jwtResetPasswordKey)
-        if(!decoded) {
-            throw createError(400, 'Invalid/Expired token')
-        }
-
-        const filter = {email: decoded.email}
-        const updates = {password: password}
-        const updateOptions = {new: true}
-        const updateUser = await User.findOneAndUpdate(
-            filter,
-           updates, 
-           updateOptions, 
-       ).select('-password')
-
-       if(!updateUser){
-           throw createError(400, 'password reset failed')
-       }
+        
+        await resetPasswordByEmail(token, password)
 
         return successResponse(res,{
             statusCode: 200,

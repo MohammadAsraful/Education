@@ -135,6 +135,7 @@ const validateUserForgetPassword = [
 
   
 ];
+
 const validateUserResetPassword = [
     
 
@@ -154,10 +155,6 @@ const validateUserResetPassword = [
     )
     .withMessage(
         'Password should be atleast one uppercase letter, one lowercase, one number, and one special character'),
-
-
-    
-   
 
   
 ];
